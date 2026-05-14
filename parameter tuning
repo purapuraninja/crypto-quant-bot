@@ -1,0 +1,132 @@
+# Parameter Tuning: Meningkatkan Frekuensi Entry Swing Bot
+
+## Diagnosis
+
+Bot hanya membuka 1 posisi dalam 24 jam terakhir karena **7 layer bottleneck** yang saling menumpuk:
+
+### Root Causes (dari log terakhir)
+
+| # | Bottleneck | Current Value | Dampak |
+|---|-----------|---------------|--------|
+| 1 | **Adaptive = DEFENSIVE** | streak=-1, weekly_pnl=-22.70 | min_score naik ke 7.0, leverage ×0.6 |
+| 2 | **AI semua HOLD (score=0)** | 30/30 symbols = HOLD | Market genuinely weak (F&G=26, bearish composite) |
+| 3 | **MIN_SCORE_HARD = 8.0** | Di .env | Bahkan jika AI kasih score 7.5, tetap reject |
+| 4 | **MIN_RR = 2.0** | Di .env | Terlalu ketat — banyak setup bagus punya RR 1.5-1.8 |
+| 5 | **DAILY_LOSS_LIMIT = $5** | Di .env | Dengan weekly loss -$22, circuit breaker mudah kena |
+| 6 | **Defensive threshold** terlalu agresif | streak ≤ -3 OR weekly > 5% balance | Dengan balance $159, $5 weekly loss = 3.1% sudah trigger |
+| 7 | **SYMBOL_LOSS_COOLDOWN = 6h** | Di .env | Terlalu lama untuk swing 15-min scan |
+
+> [!IMPORTANT]
+> **Masalah utama saat ini bukan parameter — AI memang kasih score 0 ke semua 30 symbols karena market bearish.** Tapi setelah market pulih, parameter terlalu ketat akan tetap menghalangi entry. Tuning ini memastikan bot siap entry begitu ada opportunity.
+
+## Proposed Changes
+
+### 1. `.env` — Relaxed Quality Filters
+
+#### [MODIFY] [.env](file:///c:/Users/MyBook%20PRO%20K7/Trading%20Bot%20-%20switch/.env)
+
+| Parameter | Before | After | Rationale |
+|-----------|--------|-------|-----------|
+| `MIN_SCORE_HARD` | *(not set, default 8.0 via config.py)* | **7.0** | Score 7.0-7.9 adalah "good setup", layak diambil. 8.0 terlalu strict — hanya ~20% signal AI pernah capai 8+ |
+| `MIN_CONFIDENCE_HARD` | *(not set, default 0.70)* | **0.65** | Slight relax — 0.65 masih reasonable threshold |
+| `MIN_RR` | 2.0 | **1.5** | RR 1.5 = TP1 harus 1.5× jauh dari SL. Cukup baik untuk swing. 2.0 reject banyak setup valid |
+| `DAILY_LOSS_LIMIT_USDT` | 5.0 | **8.0** | Dengan balance ~$159, $8 = ~5% daily loss limit. $5 terlalu cepat kena |
+| `SYMBOL_LOSS_COOLDOWN_H` | 6.0 | **4.0** | 6h cooldown terlalu panjang — swing scan tiap 15 menit, 4H candle baru = opportunity baru |
+| `MAX_TRADES_PER_SYMBOL_DAY` | 2 | **3** | Swing mode boleh re-enter jika candle baru memberi setup baru |
+
+---
+
+### 2. `config.py` — Relaxed Adaptive Defensive Threshold
+
+#### [MODIFY] [config.py](file:///c:/Users/MyBook%20PRO%20K7/Trading%20Bot%20-%20switch/config.py)
+
+Config defaults update:
+- `MIN_SCORE_HARD` default: 8.0 → **7.0**
+- `MIN_CONFIDENCE_HARD` default: 0.70 → **0.65**
+
+---
+
+### 3. `trade_memory.py` — Softer Defensive Mode
+
+#### [MODIFY] [trade_memory.py](file:///c:/Users/MyBook%20PRO%20K7/Trading%20Bot%20-%20switch/utils/trade_memory.py)
+
+Masalah: Defensive mode trigger terlalu mudah:
+- `streak <= -3` → **streak <= -5** (5 loss beruntun baru defensive)
+- `weekly > 5% balance` → **weekly > 8% balance** (lebih toleran)
+- Conservative: `streak <= -2` → **streak <= -3**
+- Conservative: `recent_wr < 40` → **recent_wr < 35**
+
+Defensive mode saat ini naikkan min_score ke 7.0 dan leverage ×0.6. Ini membuat bot hampir tidak bisa entry karena:
+- AI jarang kasih score > 7.0 di market sideways/bearish
+- Leverage 0.6× dari leverage yang sudah di-cap
+
+Relaxing threshold membuat bot lebih sering di mode "normal" yang balanced.
+
+---
+
+### 4. `main.py` — Adaptive Floor Adjustment
+
+#### [MODIFY] [main.py](file:///c:/Users/MyBook%20PRO%20K7/Trading%20Bot%20-%20switch/main.py)
+
+Di `_apply_adaptive_rules()`: Leverage floor dan caps:
+- `lev_hard_caps` defensive: 30 → **35** 
+- `lev_floor`: 30 → **25** (allow lower leverage jika AI suggests safer setup)
+
+---
+
+### 5. AI Prompt Tuning (signal_engine.py)
+
+#### [MODIFY] [signal_engine.py](file:///c:/Users/MyBook%20PRO%20K7/Trading%20Bot%20-%20switch/analyzer/signal_engine.py)
+
+Masalah: AI terlalu "scared" di bear market — score 0 untuk SEMUA 30 coins termasuk ETH, SOL, BNB.
+
+Tambahkan instruksi di `SYSTEM_PROMPT`:
+```
+BEAR MARKET: In bearish regime (F&G<30, composite bearish), SHORT setups are EXPECTED.
+Do NOT default score=0 on ALL symbols. Evaluate each independently.
+If structure=downtrend + HTF bearish + volume confirms → valid SHORT setup (score 6-8).
+Giving score=0 to ALL symbols = lazy analysis. At least 2-3 symbols should have non-zero scores.
+```
+
+## Summary of All Changes
+
+```diff
+# .env
++ MIN_SCORE_HARD=7.0
++ MIN_CONFIDENCE_HARD=0.65
+- MIN_RR=2.0
++ MIN_RR=1.5
+- DAILY_LOSS_LIMIT_USDT=5.0
++ DAILY_LOSS_LIMIT_USDT=8.0
+- SYMBOL_LOSS_COOLDOWN_H=6.0
++ SYMBOL_LOSS_COOLDOWN_H=4.0
+- MAX_TRADES_PER_SYMBOL_DAY=2
++ MAX_TRADES_PER_SYMBOL_DAY=3
+```
+
+```diff
+# trade_memory.py (adaptive thresholds)
+- if streak <= -3 or weekly_pnl > 5% balance → defensive
++ if streak <= -5 or weekly_pnl > 8% balance → defensive
+- if streak <= -2 or recent_wr < 40 → conservative
++ if streak <= -3 or recent_wr < 35 → conservative
+```
+
+```diff
+# signal_engine.py SYSTEM_PROMPT
++ BEAR MARKET guidance (don't give score=0 to ALL symbols)
+```
+
+> [!WARNING]
+> **Trade-off**: Relaxing filters = lebih banyak entry tapi juga lebih banyak potensi loss. Parameter ini di-tuned untuk **swing mode** yang hold 1-3 hari. Jika bot mulai losing streak lagi, pertimbangkan tightening kembali.
+
+## Verification Plan
+
+### Automated Tests
+- Restart bot setelah perubahan
+- Monitor 3-5 scan cycles via log — pastikan AI mulai memberikan score > 0
+- Verifikasi adaptive mode berubah dari "defensive" ke "normal/conservative"
+
+### Manual Verification
+- Cek Telegram notification — harus mulai terima signal notifications  
+- Monitor posisi baru dalam 4-8 jam ke depan

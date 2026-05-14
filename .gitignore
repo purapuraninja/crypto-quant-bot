@@ -1,0 +1,56 @@
+# Secrets and environment files
+.env
+.env.*
+*.env
+*.env.*
+env.example
+env.sample
+.env.sample
+- Copy.env
+
+# Private keys and credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*secret*
+*token*
+*credential*
+*credentials*
+*private*
+*apikey*
+*api_key*
+
+# Runtime trading data and local history
+logs/
+pnl_store*.json
+trade_memory*.json
+claudecode history/
+.claude/
+
+# Python/cache artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Generated reports and local notes
+bot_performance.html
+dashboard.html
+CHAT_NOTES_*.md
+bug.txt
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
