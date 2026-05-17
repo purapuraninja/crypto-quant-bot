@@ -94,6 +94,50 @@ Dengan begitu alert trading bot dan update monitoring OpenClaw mudah dibedakan d
 
 ---
 
+## Sistem Scoring
+
+Score ditentukan oleh AI (0-14), bukan dihitung oleh bot. Bot filter berdasarkan threshold.
+
+**Swing Mode (4H Primary, max ~14.5):**
+
+| Kategori | Poin |
+|----------|------|
+| EMA trend alignment | +2 / +1 / 0 |
+| HTF alignment | +1.5 / 0 / -2 |
+| Structure | +2 / +2.5 / 0 |
+| RSI | +1 / +0.5 / -1 |
+| Volume | +2 / +1.5 / +0.5 / -1 |
+| OI | +1 / 0 / -0.5 |
+| Funding | +1 / 0 / -1 |
+| Entry location | +1.5 / 0 / -1.5 |
+| Volatility | +1 / -1 |
+| MTF alignment | +2 / +1 / 0 / -1 |
+
+**Intraday Mode (15M Primary, max ~14):**
+
+| Kategori | Poin |
+|----------|------|
+| 4H alignment | +3 / 0 / -3 |
+| 1H HTF | +2 / 0 / -2 |
+| 15M structure | +2.5 / +2 / 0 |
+| 15M RSI | +1 / -1 / +0.5 |
+| Volume (15M) | +2 / +0.5 |
+| 5M momentum | +1 / 0 / -1 |
+| 5M structure | +1 / 0 |
+| Entry location | +1.5 / +1 / -1.5 |
+| Funding | +0.5 / -1 |
+
+**Threshold Keputusan:**
+
+| Mode | HOLD | Entry (ok) | Entry (good) | Entry (strong) |
+|------|------|------------|--------------|----------------|
+| Swing | < 5.5 | >= 5.5 (1%) | >= 6.5 (1.5%) | >= 8.0 (2%) |
+| Intraday | < 8.0 | >= 8.0 (1%) | >= 9.0 (1.5%) | >= 10.0 (2%) |
+
+**Confidence Minimum:** Swing=0.65, Intraday=0.70
+
+---
+
 ## Update Terbaru: ICT/SMC Retest + Memory Blacklist
 
 Perbaikan terbaru menambah filter untuk dua masalah utama: AI telat entry dan bot mengulang entry pada symbol yang historis minus.
