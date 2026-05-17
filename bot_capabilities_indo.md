@@ -1,135 +1,96 @@
 # Marvel AI Quant Trading Bot — Capability Audit
 
-> **Version**: Marvel AI Quant Trading Bot v2.0  
-> **Architecture**: Agentic Trading Workflow (5-Role Committee) + MCP Monitoring Layer  
+> **Versi**: Marvel AI Quant Trading Bot v2.0  
+> **Arsitektur**: Agentic Trading Workflow + MCP Monitoring Layer  
 > **Exchange**: Bybit Futures (CEX) + Hyperliquid (DEX)  
-> **Language**: Python 3, Fully Async  
+> **Bahasa**: Python 3, Fully Async  
 
 ---
 
-## Latest Implemented Updates: MCP, OpenClaw Monitoring, and Two-Way Feedback
+## Update Terbaru: MCP, OpenClaw Monitoring, dan Two-Way Feedback
 
-The bot now supports an external monitoring agent workflow where OpenClaw can monitor the trading bot through MCP without being allowed to execute trades.
+Bot sekarang mendukung workflow monitoring eksternal melalui OpenClaw dan MCP. OpenClaw bisa memantau bot dari Telegram, membaca status bot, mendeteksi pola trade buruk, dan mengirim feedback strategi ke LLM internal bot. OpenClaw tetap **tidak diberi hak untuk open, close, atau modify posisi**.
 
 ### MCP SSE Server
 
-- Added SSE transport for the trading-bot MCP server.
-- Runtime endpoint:
+- MCP server sekarang mendukung transport SSE.
+- Endpoint runtime:
   - `http://127.0.0.1:8080/sse`
   - Health check: `http://127.0.0.1:8080/health`
-- MCP exposes read-only monitoring tools plus controlled feedback tools.
-- The MCP server currently exposes 18 tools, including bot status, bad-trade review, strategy feedback, and feedback review retrieval.
+- MCP mengekspos tool monitoring read-only dan tool feedback yang terkontrol.
+- Total tool MCP sekarang 18, termasuk status bot, review trade buruk, submit feedback strategi, dan baca review feedback dari LLM bot.
 
-### OpenClaw Monitoring Integration
+### Integrasi OpenClaw Monitoring
 
-OpenClaw can now act as a Telegram-based monitoring agent:
+OpenClaw sekarang bisa bertindak sebagai monitoring agent berbasis Telegram:
 
-- Reads bot state through MCP.
-- Checks dry-run/live status, open positions, PnL, active feedback, and recent bad trades.
-- Sends Telegram monitoring summaries.
-- Submits strategy caution notes through MCP when repeated bad-trade patterns are detected.
-- Does not open, close, or modify positions.
+- Membaca status bot melalui MCP.
+- Mengecek dry-run/live status, posisi terbuka, PnL, active feedback, dan recent bad trades.
+- Mengirim ringkasan monitoring ke Telegram.
+- Mengirim strategy caution melalui MCP jika terdeteksi pola trade buruk berulang.
+- Tidak bisa open, close, atau modify posisi.
 
-Recommended OpenClaw role:
+Role OpenClaw yang disarankan:
 
 ```text
-Monitor the trading bot through MCP. Never execute trades. Submit strategy feedback only as a caution for the internal trading-bot LLM.
+Monitor trading bot melalui MCP. Jangan pernah eksekusi trade. Submit strategy feedback hanya sebagai caution untuk LLM internal trading bot.
 ```
 
-### New MCP Tools
+### Tool MCP Baru
 
-| Tool | Purpose |
-|------|---------|
-| `get_bot_status_summary` | Compact bot status: dry-run, open positions, PnL, memory streak, active feedback |
-| `review_bad_trades` | Finds recent bad trades such as high-score losses, large losses, repeated symbol losses, and failed reversals |
-| `submit_strategy_feedback` | Stores OpenClaw feedback in `trade_memory.json` for the internal trading-bot LLM |
-| `get_strategy_feedback_reviews` | Lets OpenClaw read the internal bot LLM's response to submitted feedback |
+| Tool | Fungsi |
+|------|--------|
+| `get_bot_status_summary` | Status ringkas bot: dry-run, posisi terbuka, PnL, memory streak, active feedback |
+| `review_bad_trades` | Mendeteksi trade buruk seperti high-score loss, large loss, repeated symbol loss, dan failed reversal |
+| `submit_strategy_feedback` | Menyimpan feedback OpenClaw ke `trade_memory.json` untuk dipertimbangkan LLM internal bot |
+| `get_strategy_feedback_reviews` | Membaca respon/review LLM internal bot terhadap feedback yang dikirim OpenClaw |
 
 ### Two-Way Feedback Loop
 
-Feedback is no longer one-way. The implemented loop is:
+Feedback sekarang sudah dua arah:
 
 ```text
-OpenClaw detects bad-trade pattern
--> OpenClaw calls submit_strategy_feedback
--> feedback is stored in trade_memory.json
--> trading bot injects feedback into the next AI scan
--> internal trading-bot LLM reviews the feedback
--> bot stores bot_review on the feedback item
--> OpenClaw reads bot_review via get_strategy_feedback_reviews
--> OpenClaw reports the result to Telegram
+OpenClaw mendeteksi pola trade buruk
+-> OpenClaw memanggil submit_strategy_feedback
+-> feedback disimpan ke trade_memory.json
+-> bot trading inject feedback ke scan AI berikutnya
+-> LLM internal bot mereview feedback
+-> bot menyimpan bot_review di item feedback
+-> OpenClaw membaca bot_review via get_strategy_feedback_reviews
+-> OpenClaw melaporkan hasilnya ke Telegram
 ```
 
-Feedback status lifecycle:
+Lifecycle status feedback:
 
-| Status | Meaning |
-|--------|---------|
-| `pending_review` | Feedback has been submitted and is waiting for the trading-bot LLM to review it |
-| `active` | Feedback was accepted or kept as an active caution |
-| `rejected` | The trading-bot LLM rejected the feedback |
+| Status | Arti |
+|--------|------|
+| `pending_review` | Feedback sudah dikirim dan menunggu review LLM internal bot |
+| `active` | Feedback diterima atau tetap aktif sebagai caution |
+| `rejected` | Feedback ditolak oleh LLM internal bot |
 
-The LLM review can mark feedback as:
+Review LLM bisa memberi efek:
 
-| `applied_as` | Meaning |
-|--------------|---------|
-| `caution` | Use as a soft warning in future scans |
-| `hard_filter` | Treat as a stricter rule or avoid condition when implemented by strategy logic |
-| `none` | No strategy effect |
+| `applied_as` | Arti |
+|--------------|------|
+| `caution` | Dipakai sebagai soft warning di scan berikutnya |
+| `hard_filter` | Dipakai sebagai rule yang lebih ketat jika sudah diterapkan oleh logic strategi |
+| `none` | Tidak memberi efek strategi |
 
-### Telegram Sender Tags
+### Tag Pesan Telegram
 
-Telegram messages from the trading bot are now prefixed with:
+Pesan Telegram dari trading bot sekarang diawali tag:
 
 ```text
 Marvel Crypto Bot
 ```
 
-OpenClaw should be instructed to prefix its Telegram messages with:
+OpenClaw sebaiknya diinstruksikan untuk mengawali pesannya dengan:
 
 ```text
 OpenClaw
 ```
 
-This makes trading-bot alerts and OpenClaw monitoring updates easy to distinguish in the same Telegram chat.
-
----
-
-## Architecture: Agentic Trading Workflow
-
-This is not a simple signal generator. The bot operates as an **autonomous trading committee** with 5 internal roles:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    TRADING COMMITTEE                        │
-├─────────────────────────────────────────────────────────────┤
-│  1. SCOUT       → Scan market, cari setup potensial         │
-│  2. ANALYST     → Analisa teknikal + fundamental            │
-│  3. RISK MANAGER → Evaluasi risk/reward, reject jika jelek  │
-│  4. POSITION MANAGER → Kelola entry/exit/SL/TP/trail        │
-│  5. REVIEWER    → Belajar dari trade selesai, update bias   │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Decision Hierarchy
-
-1. **Hard risk rules** selalu override AI confidence
-2. **Trade memory** override raw AI score
-3. **SMC/retest quality** override momentum chasing
-4. **High leverage** = higher quality confirmation needed
-5. **High score TIDAK cukup** jika memory/setup jelek
-
-### Key Principle
-
-> "A high-confidence AI signal is only a proposal. It is not permission to trade. Permission comes only after memory, SMC, risk, and execution filters agree."
-
-### Agentic Capabilities
-
-- **Multi-timeframe analysis**: 4H primary, Daily HTF, 1H + 15M confirmation
-- **Trade memory learning**: Belajar dari setiap trade, update bias per symbol
-- **Adaptive risk mode**: Defensive → Conservative → Normal → Aggressive
-- **SMC/ICT context**: Liquidity sweep, BOS, premium/discount, retest zones
-- **Whale intelligence**: Smart money positioning + impact calculation
-- **Committee decision**: Setiap keputusan melalui 5 tahap evaluasi
+Dengan begitu alert trading bot dan update monitoring OpenClaw mudah dibedakan dalam chat Telegram yang sama.
 
 ---
 
@@ -150,13 +111,23 @@ Bot sekarang menghitung konteks objektif berbasis candle sebelum sinyal diekseku
 | `near_ema20` / `ema20_distance_pct` | Hindari entry terlalu jauh dari mean |
 | `long_retest_zone` / `short_retest_zone` | Gate pullback/retest untuk LONG/SHORT |
 
-Hard rule:
+Strict rule (`SMC_FILTER_MODE=strict`):
 - **LONG** butuh sell-side sweep reclaim, bullish BOS, atau retest support/EMA20. Reject LONG di premium tanpa sweep/retest, RSI terlalu tinggi, dekat resistance tanpa BOS, atau terlalu jauh dari EMA20.
 - **SHORT** butuh buy-side sweep reject, bearish BOS, atau retest resistance/EMA20. Reject SHORT di discount tanpa sweep/retest, RSI terlalu rendah, dekat support tanpa BOS, atau terlalu jauh dari EMA20.
 - Breakout/breakdown tanpa rising volume atau retest akan ditolak sebagai late chase entry.
 
-Operational note:
-- `SMC_FILTER_MODE=soft` adalah default runtime terbaru agar gate ini tidak mematikan semua entry. Mode soft tetap menolak chase yang jelas, tetapi sinyal dengan score/confidence tinggi bisa melewati SMC warning. Pakai `SMC_FILTER_MODE=strict` untuk hard rule lama, atau `off` untuk debug sementara.
+Runtime default:
+- `SMC_FILTER_MODE=soft` agar gate ini tidak mematikan semua entry. Mode soft tetap menolak chase yang jelas, tetapi sinyal high-conviction bisa melewati SMC warning jika `score >= 8.2` dan `confidence >= 0.72`.
+- Pakai `SMC_FILTER_MODE=strict` untuk hard rule lama, atau `SMC_FILTER_MODE=off` untuk debug sementara.
+
+Deployment ke VPS:
+- File wajib upload: `main.py`, `config.py`, dan `.env`.
+- Jika `.env` VPS punya API key/live config berbeda, jangan overwrite seluruh file. Tambahkan saja:
+  - `SMC_FILTER_MODE=soft`
+  - `SMC_SOFT_BYPASS_SCORE=8.2`
+  - `SMC_SOFT_BYPASS_CONFIDENCE=0.72`
+- File opsional: `bot_capabilities.md` untuk dokumentasi, `env.example` untuk template.
+- Setelah upload, restart service/proses bot di VPS supaya config baru terbaca.
 
 ### Symbol Loss Protection
 
@@ -226,27 +197,26 @@ final_sl_dist = min(max(atr_floor, roi_default), roi_cap)
 ---
 
 ### 4. Multi-Tiered TP + Trailing Stop Management
-**Rating: ★★★★★ — Best-in-Class**
+**Rating: ★★★★☆ — Sangat Baik**
 
-Strategi exit 3-tahap yang sophisticated (UPDATE: wider TP & trailing):
+Strategi exit 3-tahap yang sophisticated:
 
 | Event | Aksi |
 |-------|------|
-| **TP1 hit** (3× ATR) | 25% partial close + SL → Breakeven + profit lock (10% ROI) + trailing aktif |
-| **TP2 hit** (5× ATR) | 25% partial close + SL advance ke TP1 + trail tetap lebar |
-| **TP3 hit** (7-10× ATR) | 100% full close |
-| **Trail hit** | Dynamic trailing (3× ATR swing / 2.5× ATR intraday), biarkan winner jalan |
+| **TP1 hit** (1.5-2× ATR) | 30% partial close + SL → Breakeven + profit lock (0.3%) + trailing aktif (ATR/2) |
+| **TP2 hit** (3× ATR) | 30% partial close + SL advance ke TP1 + trail tightened |
+| **TP3 hit** (5-7× ATR) | 100% full close |
+| **Trail hit** | Dynamic trailing (2× ATR swing / 1.5× ATR intraday), leverage-scaled caps |
 
 - **Fee Protection**: Partial close SKIP jika TP move < 0.20% (net negative setelah fees)
-- **BE Profit Lock**: SL di BE bukan exact entry, tapi entry + 10% ROI (cover fees + lock gain)
-- **No Trail Tightening**: Trail tidak dikurangi setelah TP1/TP2 — biarkan winner jalan lebih jauh
+- **BE Profit Lock**: SL di BE bukan exact entry, tapi entry + 0.30% (cover fees + lock gain)
 
 ---
 
 ### 5. On-Chain / Whale Intelligence (Smart Money Layer)
-**Rating: ★★★★★ — Best-in-Class**
+**Rating: ★★★★☆ — Sangat Baik**
 
-Data layer yang mengumpulkan **5 sumber data whale** secara paralel + **Whale Impact Calculator**:
+Data layer yang mengumpulkan **5 sumber data whale** secara paralel:
 
 | Sumber | Proxy Untuk |
 |--------|-------------|
@@ -255,21 +225,11 @@ Data layer yang mengumpulkan **5 sumber data whale** secara paralel + **Whale Im
 | **Taker Buy/Sell Ratio** | Aggressive momentum |
 | **Fear & Greed Index** | Market regime / sentiment cycle |
 | **Liquidation Cascade** (Binance + OKX fallback) | Squeeze / cascade risk |
-| **OI Change** (Bybit) | New positions opened/closed |
-| **Price Change 24h** (Bybit) | Price direction confirmation |
 
 - **Composite Score**: Weighted formula (pos_ratio 2x > acct 1x > F&G 1x > taker 0.5x)
 - **Smart Money Rotation Detector**: Per-symbol inflow score vs BTC baseline → deteksi rotasi
 - **Per-Symbol Whale Metrics**: Parallel fetch up to 10 symbols → accumulating/distributing flags
 - **Mode-Adaptive**: Swing = 4h period (stable), Intraday = 1h period (reactive)
-- **Whale Impact Calculator** (NEW): Hitung impact whale ke harga berdasarkan OI + taker + price change
-  - **stealth_accumulation**: OI naik + taker buy + harga turun = strongly_bullish (whale beli diam-diam)
-  - **whale_accumulation**: OI naik + taker buy + harga naik = bullish
-  - **distribution_top**: OI naik + taker sell + harga naik = strongly_bearish (whale jual diam-diam)
-  - **whale_distribution**: OI naik + taker sell + harga turun = bearish
-  - **short_squeeze**: OI turun + harga naik tajam = bullish
-  - **long_liquidation**: OI turun + harga turun tajam = bearish
-- **Score Modifier**: Whale impact langsung mempengaruhi signal score (+1.5 sampai -1.0)
 
 ---
 
@@ -359,7 +319,7 @@ Prevent "posisi zombie" yang stagnan:
 | Trigger | Kondisi | Aksi |
 |---------|---------|------|
 | **Stagnant Exit** | ≥ 6 jam + \|ROI\| < 5% + *losing* | Tanya user via Telegram |
-| **Max Hold** | ≥ 12h (intraday) / 24h (swing) + *losing* | Tanya user via Telegram |
+| **Max Hold** | ≥ 12h (intraday) / 72h (swing) + *losing* | Tanya user via Telegram |
 
 - **TIDAK auto-close** — user decision (Y/N/timeout)
 - **Profitable positions**: NEVER prompted (biarkan trail/TP handle)
@@ -428,10 +388,10 @@ Data layer yang fetch 4 timeframe secara komprehensif:
 
 ```mermaid
 graph TD
-    A[Market Data Layer] -->|OHLCV + Indicators| B[Agentic Trading Workflow]
-    C[On-Chain Feed] -->|Whale + Regime + Impact| B
+    A[Market Data Layer] -->|OHLCV + Indicators| B[AI Signal Engine]
+    C[On-Chain Feed] -->|Whale + Regime| B
     D[Trade Memory] -->|Learning Context| B
-    B -->|5-Role Committee Decision| E[10+ Layer Cascade Filter]
+    B -->|Scored Signals| E[7-Layer Cascade Filter]
     E -->|Filtered Signal| F[CEX/DEX Executor]
     F -->|Entry Result| G[PnL Tracker]
     G -->|SL/TP/Trail Events| H[Main Loop]
@@ -439,14 +399,12 @@ graph TD
     G -->|Stats| I[Dashboard + Telegram]
     D -->|Adaptive Params| E
     J[Telegram Commands] -->|close/pos/perf| H
-    G -->|Trade Result| K[Reviewer → Learning Update]
-    K -->|Updated Bias| D
 ```
 
-## Total: 16 Sistem Utama
+## Total: 15 Sistem Utama
 
 | Tier | Kemampuan |
 |------|-----------|
-| **S-Tier** | Agentic Trading Workflow, Cascade Screening, AI Learning/Adaptive, Hybrid SL |
-| **A-Tier** | TP/Trail Management, Whale Intelligence + Impact, Multi-AI Fallback, DCA, Quick-Exit, Live Sync, Telegram Control |
+| **S-Tier** | Cascade Screening, AI Learning/Adaptive, Hybrid SL |
+| **A-Tier** | TP/Trail Management, Whale Intelligence, Multi-AI Fallback, DCA, Quick-Exit, Live Sync, Telegram Control |
 | **B-Tier** | Time-Exit, Dashboard, Dual Exchange, MTF Data, Utility Tools |
