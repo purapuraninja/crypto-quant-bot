@@ -1,4 +1,4 @@
-# 🏆 Meridian AI Quant Trading Bot — Capability Audit
+# 🏆 Marvel AI Quant Trading Bot — Capability Audit
 
 > **Versi**: AI Quant Trading Bot v2.0  
 > **Arsitektur**: 4-Layer (Data → Analyzer → Execution → Tracking)  
